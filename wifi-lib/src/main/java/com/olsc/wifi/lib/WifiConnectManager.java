@@ -34,18 +34,18 @@ public class WifiConnectManager {
      * @param unityMethodName 调用 Unity 的方法名称
      */
     public static void startWifiCheckUnity(Context context, final String unityObjectName, final String unityMethodName) {
-        Log.d(TAG, "Starting Wifi Check for Unity. Target: " + unityObjectName + "." + unityMethodName);
+        Log.d(TAG, "开始为 Unity 检查 Wifi。目标：" + unityObjectName + "." + unityMethodName);
         startWifiCheck(context, new WifiConnectionListener() {
             @Override
             public void onWifiConnected() {
-                Log.d(TAG, "WIFI Connected, notifying Unity...");
+                Log.d(TAG, "WIFI 已连接，正在通知 Unity...");
                 try {
                     // 使用反射以避免编译时对 Unity 库的依赖
                     Class<?> unityPlayerClass = Class.forName("com.unity3d.player.UnityPlayer");
                     java.lang.reflect.Method sendMessageMethod = unityPlayerClass.getMethod("UnitySendMessage", String.class, String.class, String.class);
                     sendMessageMethod.invoke(null, unityObjectName, unityMethodName, "success");
                 } catch (Exception e) {
-                    Log.e(TAG, "Failed to send message to Unity. Is UnityPlayer available?", e);
+                    Log.e(TAG, "向 Unity 发送消息失败。UnityPlayer 是否可用？", e);
                 }
             }
         });

@@ -22,7 +22,6 @@
     <string name="wifi_hotspot_needed">热点功能需要 Android 8.0+</string>
     <string name="wifi_found_networks">找到 %d 个网络:</string>
     
-    <!-- 网页字符串 -->
     <string name="wifi_web_title">连接设备到 Wi-Fi</string>
     <string name="wifi_web_select_label">选择网络：</string>
     <string name="wifi_web_select_placeholder">-- 请选择 --</string>
