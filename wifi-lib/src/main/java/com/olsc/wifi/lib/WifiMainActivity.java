@@ -81,11 +81,13 @@ public class WifiMainActivity extends Activity {
     private int countdownSeconds = 10;
     private Runnable countdownRunnable;
     private Runnable hotspotMonitorRunnable;
+    private Runnable connectionTimeoutRunnable; // 10秒连接超时检测
     private static final int HOTSPOT_CHECK_INTERVAL = 5000;
     private String lastReportedIp = "127.0.0.1";
     private static final String PREFS_NAME = "WifiConfigPrefs";
     private static final String KEY_WIFI_LIST = "saved_wifi_list";
 
+    // 扫描结果接收器
     private final BroadcastReceiver wifiScanReceiver = new BroadcastReceiver() {
         @RequiresApi(api = Build.VERSION_CODES.M)
         @Override
@@ -100,6 +102,7 @@ public class WifiMainActivity extends Activity {
         }
     };
 
+    // 网络状态变化接收器
     private final BroadcastReceiver networkChangeReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -114,11 +117,10 @@ public class WifiMainActivity extends Activity {
         List<ScanResult> results = wifiManager.getScanResults();
         if (results != null) {
             cachedScanResults = new ArrayList<>(results);
-            // 在 UI 中隐藏网络名称，只显示数量。
             final String statusText = getString(R.string.wifi_found_networks, results.size());
             mainHandler.post(() -> {
                 tvStatus.setText(statusText);
-                Log.d("WIFI_SCAN", "扫描完成，找到 " + results.size() + " 个网络。(UI 已隐藏名称)");
+                Log.d("WIFI_SCAN", "扫描完成，找到 " + results.size() + " 个网络。");
             });
         }
     }
@@ -142,6 +144,14 @@ public class WifiMainActivity extends Activity {
         stopHttpServer();
         stopCountdown();
         stopHotspotMonitor();
+        stopConnectionTimeout();
+    }
+
+    private void stopConnectionTimeout() {
+        if (connectionTimeoutRunnable != null) {
+            mainHandler.removeCallbacks(connectionTimeoutRunnable);
+            connectionTimeoutRunnable = null;
+        }
     }
 
     private void stopCountdown() {
@@ -184,7 +194,6 @@ public class WifiMainActivity extends Activity {
             startActivity(intent);
         });
 
-
         wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
 
         IntentFilter scanFilter = new IntentFilter();
@@ -223,7 +232,7 @@ public class WifiMainActivity extends Activity {
         try {
             accessibilityEnabled = Settings.Secure.getInt(getContentResolver(), android.provider.Settings.Secure.ACCESSIBILITY_ENABLED);
         } catch (Settings.SettingNotFoundException e) {
-            Log.e("WIFI_LIB", "Error finding setting: " + e.getMessage());
+            Log.e("WIFI_LIB", "获取无障碍状态失败: " + e.getMessage());
         }
         android.text.TextUtils.SimpleStringSplitter mStringColonSplitter = new android.text.TextUtils.SimpleStringSplitter(':');
 
@@ -250,6 +259,9 @@ public class WifiMainActivity extends Activity {
         }
     }
 
+    /**
+     * 检测当前应用是否为默认桌面 (Launcher)
+     */
     private boolean isDefaultLauncher() {
         final Intent intent = new Intent(Intent.ACTION_MAIN);
         intent.addCategory(Intent.CATEGORY_HOME);
@@ -260,7 +272,9 @@ public class WifiMainActivity extends Activity {
         return false;
     }
 
-
+    /**
+     * 检查并请求必要的权限
+     */
     private void checkPermissionsAndStart() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             List<String> permissions = new ArrayList<>();
@@ -295,7 +309,7 @@ public class WifiMainActivity extends Activity {
                 startProcess();
             } else {
                 Toast.makeText(this, "权限被拒绝，无法继续。", Toast.LENGTH_SHORT).show();
-                finish(); // 缺少权限，无法继续
+                finish();
             }
         }
     }
@@ -308,14 +322,13 @@ public class WifiMainActivity extends Activity {
             return;
         }
 
-
         if (!wifiManager.isWifiEnabled()) {
             tvStatus.setText(R.string.wifi_enabling);
             boolean success = false;
             try {
                 success = wifiManager.setWifiEnabled(true);
             } catch (Exception e) {
-                Log.e("WIFI_LIB", "Error calling setWifiEnabled", e);
+                Log.e("WIFI_LIB", "开启 Wi-Fi 出错", e);
             }
             
             if (!success && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -329,32 +342,17 @@ public class WifiMainActivity extends Activity {
             tvStatus.setText(R.string.wifi_already_connected);
             onWifiSuccess();
         } else {
-            // 确保 Wi-Fi 是开启的，然后再开始倒计时，这样系统才有机会自动连接
-                if (!wifiManager.isWifiEnabled()) {
-                    boolean success = false;
-                    try {
-                        success = wifiManager.setWifiEnabled(true);
-                    } catch (Exception ignored) {}
-                    
-                    if (!success && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        Intent panelIntent = new Intent(Settings.Panel.ACTION_WIFI);
-                        startActivityForResult(panelIntent, WIFI_PANEL_REQUEST_CODE);
-                    }
-                    return;
-                }
             startCountdown();
         }
     }
 
     private void startCountdown() {
         stopCountdown();
-        countdownSeconds = 8; // Slightly shorter default
+        countdownSeconds = 8;
         isCheckingConnection = true;
         
-        // 尝试加载已保存的 Wi-Fi 并自动连接
+        // 尝试自动连接已保存网络
         tryAutoConnectToSavedWifi();
-        
-        // 立即开始一次扫描，提高自动化速度
         startWifiScan();
         
         countdownRunnable = new Runnable() {
@@ -371,13 +369,12 @@ public class WifiMainActivity extends Activity {
                     countdownSeconds--;
                     mainHandler.postDelayed(this, 1000);
                     
-                    // 每 4 秒重新扫描一次
                     if (countdownSeconds % 4 == 0) {
                         startWifiScan();
                     }
                 } else {
                     if (!isWifiConnected() && hotspotReservation == null && !isStartingHotspot) {
-                        Log.w("WIFI_SCAN", "等待超时，正在启动热点");
+                        Log.w("WIFI_SCAN", "等待超时，启动热点以辅助配网");
                         startHotspotAndServer();
                     }
                 }
@@ -394,9 +391,9 @@ public class WifiMainActivity extends Activity {
             JSONObject json = new JSONObject(data);
             json.put(ssid, password);
             prefs.edit().putString(KEY_WIFI_LIST, json.toString()).apply();
-            Log.d("WIFI_LIB", "已为以下网络保存凭据：" + ssid);
+            Log.d("WIFI_LIB", "已保存凭据: " + ssid);
         } catch (Exception e) {
-            Log.e("WIFI_LIB", "保存 wifi 凭据时出错", e);
+            Log.e("WIFI_LIB", "保存凭据出错", e);
         }
     }
 
@@ -409,7 +406,7 @@ public class WifiMainActivity extends Activity {
             JSONObject json = new JSONObject(data);
             if (json.length() == 0) return;
             
-            Log.d("WIFI_LIB", "发现 " + json.length() + " 个已保存的网络。正在添加至建议列表...");
+            Log.d("WIFI_LIB", "发现已保存网络，尝试建议连接...");
             
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 List<WifiNetworkSuggestion> suggestions = new ArrayList<>();
@@ -425,7 +422,7 @@ public class WifiMainActivity extends Activity {
                 wifiManager.addNetworkSuggestions(suggestions);
             }
         } catch (Exception e) {
-            Log.e("WIFI_LIB", "自动连接时出错", e);
+            Log.e("WIFI_LIB", "自动建议连接出错", e);
         }
     }
 
@@ -434,13 +431,9 @@ public class WifiMainActivity extends Activity {
         hotspotMonitorRunnable = new Runnable() {
             @Override
             public void run() {
-                // 如果 Wi-Fi 未连接，且没有热点正在运行，且倒计时已结束，则尝试重新开启热点
                 if (hotspotReservation == null && !isWifiConnected() && !isStartingHotspot && countdownSeconds <= 0) {
-                    Log.d("WIFI_MONITOR", "热点监控：热点丢失，正在重新启动...");
+                    Log.d("WIFI_MONITOR", "监控: 热点丢失，尝试重新启动");
                     startHotspotAndServer();
-                } else if (hotspotReservation != null) {
-                    // 热点正常运行中, 刷新状态提示
-                    // tvStatus.setText(R.string.wifi_hotspot_monitoring);
                 }
                 mainHandler.postDelayed(this, HOTSPOT_CHECK_INTERVAL);
             }
@@ -450,13 +443,13 @@ public class WifiMainActivity extends Activity {
 
     @SuppressLint("SetTextI18n")
     private void onWifiSuccess() {
+        stopConnectionTimeout(); // 成功连接，取消超时检测
         tvStatus.setText(R.string.wifi_status_connected);
-        WifiAccessibilityService.pendingSsid = null; // 连接成功，清空待处理 SSID
+        WifiAccessibilityService.pendingSsid = null;
 
         mainHandler.postDelayed(() -> {
-            Log.d("WIFI_LIB", "onWifiSuccess 延迟任务：清理资源并启动 Unity...");
+            Log.d("WIFI_LIB", "配网成功，清理资源...");
             
-            // 显式停止热点和服务器以释放资源
             if (hotspotReservation != null) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     hotspotReservation.close();
@@ -470,19 +463,18 @@ public class WifiMainActivity extends Activity {
             
             try {
                 Class<?> unityClass = Class.forName("com.unity3d.player.UnityPlayerActivity");
-                Log.d("WIFI_LIB", "正在启动 UnityPlayerActivity...");
+                Log.d("WIFI_LIB", "准备返回 Unity 界面");
                 Intent intent = new Intent(this, unityClass);
-                // 使用 REORDER_TO_FRONT 以平滑转换到现有的 Unity 任务
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
                 startActivity(intent);
             } catch (ClassNotFoundException e) {
-                Log.e("WIFI_LIB", "未找到 UnityPlayerActivity！", e);
-                Toast.makeText(this, "找不到 Unity 内容。", Toast.LENGTH_SHORT).show();
+                Log.e("WIFI_LIB", "未找到 UnityPlayerActivity");
             }
             
             finish();
-        }, 1200); // 稍微加长延迟让系统稳定下来
+        }, 1200);
     }
+
     private void startWifiScan() {
         if (isScanning) return;
         isScanning = true;
@@ -490,12 +482,13 @@ public class WifiMainActivity extends Activity {
         boolean success = wifiManager.startScan();
         if (!success) {
             isScanning = false;
-            Log.e("WIFI_SCAN", "startScan() 失败");
+            Log.e("WIFI_SCAN", "系统扫描请求失败");
             if (countdownSeconds <= 0) {
                 startHotspotAndServer();
             }
         }
     }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -503,6 +496,7 @@ public class WifiMainActivity extends Activity {
             new Handler(Looper.getMainLooper()).postDelayed(this::startProcess, 1000);
         }
     }
+
     private boolean isLocationEnabled() {
         LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         if (locationManager == null) return false;
@@ -517,6 +511,7 @@ public class WifiMainActivity extends Activity {
             }
         }
     }
+
     private boolean isWifiConnected() {
         ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         if (cm != null) {
@@ -569,50 +564,27 @@ public class WifiMainActivity extends Activity {
                         final String fSsid = ssid;
                         final String fPass = password;
                         new Thread(() -> {
-                            // WiFi 连接二维码
                             String wifiQrContent = "WIFI:S:" + fSsid + ";T:WPA;P:" + fPass + ";;";
                             Bitmap qrBitmap = generateQrCode(wifiQrContent);
                             
-                            // 网页配网二维码
                             String ip = getHotspotIpAddress();
                             String webUrl = "http://" + ip + ":8765/";
                             Bitmap webQrBitmap = generateQrCode(webUrl);
 
                             mainHandler.post(() -> {
-                                if (qrBitmap != null) {
-                                    ivQrCode.setImageBitmap(qrBitmap);
-                                }
-                                if (webQrBitmap != null) {
-                                    ivWebQrCode.setImageBitmap(webQrBitmap);
-                                }
+                                if (qrBitmap != null) ivQrCode.setImageBitmap(qrBitmap);
+                                if (webQrBitmap != null) ivWebQrCode.setImageBitmap(webQrBitmap);
                                 cardConnection.setVisibility(View.VISIBLE);
                                 cardWebStep.setVisibility(View.VISIBLE);
                                 tvStatus.setText("设备热点已开启");
-                                tvHotspotInfo.setText("手动连接 - 名称: " + fSsid + "  密码: " + fPass);
+                                tvHotspotInfo.setText("名称: " + fSsid + "\n密码: " + fPass);
                                 tvIpLink.setText(webUrl);
                                 startHttpServer();
                             });
                         }).start();
 
-                        // 开启热点健康检测
                         startHotspotMonitor();
-                        
                         startIpAndClientPolling(ssid, password);
-
-                    }
-
-                    @SuppressLint("SetTextI18n")
-                    @Override
-                    public void onStopped() {
-                        super.onStopped();
-                        isStartingHotspot = false;
-                        mainHandler.post(() -> {
-                            tvStatus.setText(R.string.wifi_hotspot_stopped);
-                            cardConnection.setVisibility(View.GONE);
-
-                            stopPolling();
-                        });
-                        stopHttpServer();
                     }
 
                     @Override
@@ -620,39 +592,34 @@ public class WifiMainActivity extends Activity {
                         super.onFailed(reason);
                         isStartingHotspot = false;
                         mainHandler.post(() -> {
-                            tvStatus.setText(getString(R.string.wifi_hotspot_failed, reason));
+                            tvStatus.setText("热点启动失败: " + reason);
                             btnAction.setVisibility(View.VISIBLE);
-
                         });
                     }
                 }, new Handler(Looper.getMainLooper()));
             } catch (IllegalStateException e) {
                 isStartingHotspot = false;
-                Log.e("WIFI_HOTSPOT", "已存在活动请求", e);
+                Log.e("WIFI_HOTSPOT", "请求热点异常", e);
             }
-        } else {
-            Toast.makeText(this, R.string.wifi_hotspot_needed, Toast.LENGTH_SHORT).show();
-            finish();
         }
-
     }
 
     private void startHttpServer() {
         if (isServerRunning) return;
         isServerRunning = true;
 
-        Thread serverThread = new Thread(() -> {
+        new Thread(() -> {
             try {
                 serverSocket = new ServerSocket(8765, 50, InetAddress.getByName("0.0.0.0"));
+                Log.d("WIFI_HTTP", "服务器已在 8765 端口启动");
                 while (isServerRunning) {
                     Socket socket = serverSocket.accept();
                     handleClient(socket);
                 }
             } catch (Exception e) {
-                if (isServerRunning) e.printStackTrace();
+                if (isServerRunning) Log.e("WIFI_HTTP", "服务器异常", e);
             }
-        });
-        serverThread.start();
+        }).start();
     }
 
     private void startIpAndClientPolling(String ssid, String password) {
@@ -662,17 +629,15 @@ public class WifiMainActivity extends Activity {
             @Override
             public void run() {
                 String ip = getHotspotIpAddress();
-                // 如果检测到有效的局域网 IP 且与上次不同，则更新 UI 和二维码
                 if (!ip.equals("127.0.0.1") && !ip.equals(lastReportedIp)) {
                     lastReportedIp = ip;
                     String webUrl = "http://" + ip + ":8765/";
-                    Log.d("WIFI_IP", "热点 IP 已就绪: " + ip + "，正在更新二维码...");
+                    Log.d("WIFI_IP", "热点 IP 已就绪: " + ip);
                     
                     mainHandler.post(() -> {
                         tvIpLink.setText(webUrl);
                     });
 
-                    // 异步重新生成网页配网二维码
                     new Thread(() -> {
                         Bitmap webQrBitmap = generateQrCode(webUrl);
                         mainHandler.post(() -> {
@@ -682,7 +647,6 @@ public class WifiMainActivity extends Activity {
                         });
                     }).start();
                 }
-
                 mainHandler.postDelayed(this, IP_POLL_INTERVAL);
             }
         };
@@ -696,13 +660,12 @@ public class WifiMainActivity extends Activity {
         }
     }
 
-
     private Bitmap generateQrCode(String content) {
         try {
             BarcodeEncoder barcodeEncoder = new BarcodeEncoder();
             return barcodeEncoder.encodeBitmap(content, BarcodeFormat.QR_CODE, 400, 400);
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e("WIFI_QR", "生成二维码失败", e);
             return null;
         }
     }
@@ -725,7 +688,7 @@ public class WifiMainActivity extends Activity {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e("WIFI_IP", "获取热点 IP 失败", e);
         }
         return "127.0.0.1";
     }
@@ -734,9 +697,7 @@ public class WifiMainActivity extends Activity {
         isServerRunning = false;
         try {
             if (serverSocket != null) serverSocket.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        } catch (Exception ignored) {}
     }
 
     @SuppressLint({"MissingPermission", "SetTextI18n"})
@@ -752,7 +713,7 @@ public class WifiMainActivity extends Activity {
                 return;
             }
 
-            Log.d("WIFI_HTTP", "请求内容：" + requestLine);
+            Log.d("WIFI_HTTP", "收到请求: " + requestLine);
             
             String path = "/";
             String method = "GET";
@@ -764,7 +725,7 @@ public class WifiMainActivity extends Activity {
                 }
             }
 
-            // --- 强制 Portal 认证页面跳转 (安卓 / iOS 自动弹窗) ---
+            // Portal 跳转逻辑
             if (path.contains("generate_204") || path.contains("hotspot-detect") || 
                 path.contains("success.html") || path.contains("canonical.html") || 
                 path.contains("connecttest") || path.contains("kindle-wifi")) {
@@ -773,10 +734,9 @@ public class WifiMainActivity extends Activity {
                 String response = "HTTP/1.1 302 Found\r\nLocation: http://" + ip + ":8765/\r\n\r\n";
                 out.write(response.getBytes(StandardCharsets.UTF_8));
                 out.flush();
-                Log.d("WIFI_HTTP", "检测到连接检测请求，已重定向至配网页面: " + path);
+                Log.d("WIFI_HTTP", "执行 Portal 引导跳转");
                 return;
             }
-            // --------------------------------------------------
 
             int contentLength = 0;
             String headerLine;
@@ -786,34 +746,20 @@ public class WifiMainActivity extends Activity {
                 }
             }
             
-            String css = "body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; " +
-                         "background: linear-gradient(135deg, #f6f9fc 0%, #eef2f7 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; } " +
-                         ".container { width: 90%; max-width: 420px; background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); " +
-                         "padding: 40px 32px; border-radius: 28dp; box-shadow: 0 20px 40px rgba(0,0,0,0.05); border: 1px solid rgba(255,255,255,0.7); } " +
-                         "h2 { margin: 0 0 12px 0; color: #1a1a1a; font-size: 26px; font-weight: 700; letter-spacing: -0.5px; } " +
-                         "p { color: #666; font-size: 15px; margin-bottom: 32px; line-height: 1.5; } " +
-                         "label { font-size: 13px; font-weight: 600; color: #888; display: block; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; } " +
-                         "input, select { margin-bottom: 20px; padding: 16px; font-size: 16px; width: 100%; box-sizing: border-box; " +
-                         "border: 1.5px solid #eee; border-radius: 14px; background: #fafafa; transition: all 0.2s ease; outline: none; } " +
-                         "input:focus, select:focus { border-color: #007aff; background: #fff; box-shadow: 0 0 0 4px rgba(0,122,255,0.1); } " +
-                         "button { background: #007aff; color: white; border: none; cursor: pointer; padding: 18px; border-radius: 16px; " +
-                         "font-size: 17px; font-weight: 600; width: 100%; transition: all 0.3s ease; box-shadow: 0 10px 20px rgba(0,122,255,0.2); } " +
-                         "button:hover { background: #0063cc; transform: translateY(-1px); box-shadow: 0 12px 24px rgba(0,110,230,0.25); } " +
-                         "button:active { transform: translateY(0); } " +
-                         ".footer { margin-top: 32px; text-align: center; color: #bbb; font-size: 12px; }";
+            String css = "body { margin: 0; font-family: -apple-system, sans-serif; background: #f6f9fc; min-height: 100vh; display: flex; align-items: center; justify-content: center; } " +
+                         ".container { width: 90%; max-width: 420px; background: #fff; padding: 40px 32px; border-radius: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.05); } " +
+                         "h2 { margin: 0 0 12px 0; color: #1a1a1a; } " +
+                         "input, select { margin-bottom: 20px; padding: 16px; width: 100%; box-sizing: border-box; border: 1.5px solid #eee; border-radius: 14px; } " +
+                         "button { background: #007aff; color: white; border: none; padding: 18px; border-radius: 16px; width: 100%; font-weight: 600; }";
 
             if (path.equals("/") || path.startsWith("/?")) {
                 List<ScanResult> results = cachedScanResults;
+                StringBuilder options = new StringBuilder();
                 Set<String> ssids = new HashSet<>();
-                if (results != null) {
-                    for (ScanResult sr : results) {
-                        if (sr.SSID != null && !sr.SSID.isEmpty()) {
-                            ssids.add(sr.SSID);
-                        }
-                    }
+                for (ScanResult sr : results) {
+                    if (sr.SSID != null && !sr.SSID.isEmpty()) ssids.add(sr.SSID);
                 }
                 
-                StringBuilder options = new StringBuilder();
                 if (ssids.isEmpty()) {
                     options.append("<option value=\"\">未发现网络</option>");
                 } else {
@@ -823,27 +769,20 @@ public class WifiMainActivity extends Activity {
                 }
                 
                 String js = "<script>" +
-                            "function updateSsid(val) { if(val) document.getElementsByName('manual_ssid')[0].value = val; }" +
+                            "function updateSsid(val) { " +
+                            "  if(val) document.getElementsByName('manual_ssid')[0].value = val; " +
+                            "}" +
                             "</script>";
 
-                String htmlBody = "<div class=\"container\">" +
-                        "<h2>配置网络</h2>" +
-                        "<p>请为您的设备选择一个可用的 Wi-Fi 网络并输入密码。</p>" +
+                String htmlBody = "<div class=\"container\"><h2>配置网络</h2><p>请选择 Wi-Fi 并输入密码。</p>" +
                         "<form method=\"POST\" action=\"/connect\">" +
-                        "<label>选择周边网络</label>" +
-                        "<select name=\"ssid\" onchange=\"updateSsid(this.value)\"><option value=\"\">-- 请选择 --</option>" + options.toString() + "</select>" +
-                        "<label>手动输入名称 (SSID)</label>" +
+                        "<select name=\"ssid\" onchange=\"updateSsid(this.value)\"><option value=\"\">-- 请选择 --</option>" + options + "</select>" +
                         "<input type=\"text\" name=\"manual_ssid\" placeholder=\"Wi-Fi 名称\">" +
-                        "<label>安全密码</label>" +
                         "<input type=\"password\" name=\"password\" placeholder=\"在此输入密码\">" +
-                        "<button type=\"submit\">开始配网</button></form>" +
-                        "<div class=\"footer\">© 2026 智能助手 · 安全加密传输</div>" +
-                        "</div>" +
-                        js;
+                        "<button type=\"submit\">开始配网</button></form></div>" + js;
 
                 String response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n" +
-                        "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><style>" + css + "</style></head><body>" +
-                        htmlBody + "</body></html>";
+                        "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width\"><style>" + css + "</style></head><body>" + htmlBody + "</body></html>";
                 out.write(response.getBytes(StandardCharsets.UTF_8));
                 out.flush();
                 
@@ -851,84 +790,40 @@ public class WifiMainActivity extends Activity {
                 String body = "";
                 if (method.equals("POST") && contentLength > 0) {
                     char[] bodyChars = new char[contentLength];
-                    int totalRead = 0;
-                    while (totalRead < contentLength) {
-                        int read = reader.read(bodyChars, totalRead, contentLength - totalRead);
-                        if (read == -1) break;
-                        totalRead += read;
-                    }
+                    reader.read(bodyChars, 0, contentLength);
                     body = new String(bodyChars);
-                } else if (method.equals("GET") && path.contains("?")) {
-                    body = path.substring(path.indexOf("?") + 1);
                 }
-
-                String ssid = "";
-                String manualSsid = "";
-                String password = "";
                 
-                if (!body.isEmpty()) {
-                    String[] params = body.split("&");
-                    for (String param : params) {
-                        String[] kv = param.split("=");
-                        if (kv.length == 2) {
-                            try {
-                                String key = URLDecoder.decode(kv[0], "UTF-8");
-                                String value = URLDecoder.decode(kv[1], "UTF-8");
-                                if (key.equals("ssid")) ssid = value;
-                                else if (key.equals("manual_ssid")) manualSsid = value;
-                                else if (key.equals("password")) password = value;
-                            } catch (Exception ignored) {}
-                        }
+                String ssid = "", manualSsid = "", password = "";
+                String[] params = body.split("&");
+                for (String param : params) {
+                    String[] kv = param.split("=");
+                    if (kv.length == 2) {
+                        String key = URLDecoder.decode(kv[0], "UTF-8");
+                        String value = URLDecoder.decode(kv[1], "UTF-8");
+                        if (key.equals("ssid")) ssid = value;
+                        else if (key.equals("manual_ssid")) manualSsid = value;
+                        else if (key.equals("password")) password = value;
                     }
                 }
                 
-                String finalSsid = (manualSsid != null && !manualSsid.trim().isEmpty()) ? manualSsid.trim() : ssid;
-                
-                if (finalSsid.isEmpty() && method.equals("GET")) {
-                    String redirectHome = "HTTP/1.1 302 Found\r\nLocation: /\r\n\r\n";
-                    out.write(redirectHome.getBytes(StandardCharsets.UTF_8));
-                    out.flush();
-                    return;
-                }
-
-                String htmlResponse = "<!DOCTYPE html><html><head>" +
-                        "<meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">" +
-                        "<meta http-equiv=\"refresh\" content=\"5;url=/\">" +
-                        "<style>" + css + "</style></head><body>" +
-                        "<div class=\"container\">" +
-                        "<h2>" + getString(R.string.wifi_web_received_title) + "</h2>" +
-                        "<p>" + getString(R.string.wifi_web_attempting_msg, finalSsid) + "</p>" +
-                        "<div style=\"margin-top:24px; padding:12px; background:#f0f7ff; border-radius:8px; color:#0052cc; font-size:14px; text-align:center;\">" +
-                        "正在连接中，5 秒后自动跳转..." +
-                        "</div>" +
-                        "</div></body></html>";
-
-                String header = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n" +
-                        "Content-Length: " + htmlResponse.getBytes(StandardCharsets.UTF_8).length + "\r\n" +
-                        "Connection: close\r\n\r\n";
-                
-                out.write(header.getBytes(StandardCharsets.UTF_8));
-                out.write(htmlResponse.getBytes(StandardCharsets.UTF_8));
-                out.flush();
-                
-                String finalConfigSsid = finalSsid;
-                String finalConfigPass = password;
-                // 延迟连接尝试，以允许 HTTP 响应被逐字节发送完毕
-                mainHandler.postDelayed(() -> {
-                    showSuccessDialog(finalConfigSsid);
-                    connectToWifi(finalConfigSsid, finalConfigPass);
-                }, 1000); // 1 秒延迟
-            } else {
-                String response = "HTTP/1.1 404 Not Found\r\n\r\n";
+                String finalSsid = manualSsid.isEmpty() ? ssid : manualSsid;
+                final String finalPassword = password;
+                String htmlResponse = "<div class=\"container\"><h2>收到凭据</h2><p>正在尝试连接 " + finalSsid + "...</p></div>";
+                String response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n" +
+                        "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width\"><style>" + css + "</style></head><body>" + htmlResponse + "</body></html>";
                 out.write(response.getBytes(StandardCharsets.UTF_8));
                 out.flush();
+                
+                mainHandler.postDelayed(() -> {
+                    showSuccessDialog(finalSsid);
+                    connectToWifi(finalSsid, finalPassword);
+                }, 1000);
             }
         } catch (Exception e) {
-            Log.e("WIFI_HTTP", "客户端连接错误", e);
+            Log.e("WIFI_HTTP", "处理连接异常", e);
         } finally {
-            try {
-                socket.close();
-            } catch (Exception ignored) {}
+            try { socket.close(); } catch (Exception ignored) {}
         }
     }
     
@@ -940,136 +835,87 @@ public class WifiMainActivity extends Activity {
         tvMsg.setText(getString(R.string.wifi_dialog_subtitle, ssid));
 
         android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
-                .setView(view)
-                .setCancelable(false)
-                .create();
-
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawable(
-                new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
-        }
+                .setView(view).setCancelable(false).create();
+        if (dialog.getWindow() != null) dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
         dialog.show();
-
-        mainHandler.postDelayed(() -> {
-            if (dialog.isShowing()) dialog.dismiss();
-        }, 4000);
+        mainHandler.postDelayed(() -> { if (dialog.isShowing()) dialog.dismiss(); }, 4000);
     }
 
-    @SuppressLint("SetTextI18n")
     private void connectToWifi(String ssid, String password) {
-        // 1. 彻底关闭热点（对于硬件互斥设备，这步至关重要）
         if (hotspotReservation != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                hotspotReservation.close();
-            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) hotspotReservation.close();
             hotspotReservation = null;
         }
         stopHttpServer();
         stopHotspotMonitor();
 
-        Log.d("WIFI_CONNECT", "正在尝试连接至：" + ssid);
-        tvStatus.setText(getString(R.string.wifi_connecting_to, ssid) + "...");
-        
-        // 设置无障碍服务的待处理 SSID，以便它可以自动从列表中选择
+        Log.d("WIFI_CONNECT", "执行连接任务: " + ssid);
+        tvStatus.setText("正在连接: " + ssid);
         WifiAccessibilityService.pendingSsid = ssid;
 
-        // 2. 检查并强制确保 Wi-Fi 已开启（因为开启热点可能导致 Wi-Fi 硬件进入 AP 模式或被系统关闭）
-        if (!wifiManager.isWifiEnabled()) {
-            Log.d("WIFI_CONNECT", "Wi-Fi 已关闭（可能是由于开启热点），正在重新开启...");
-            boolean success = false;
-            try {
-                success = wifiManager.setWifiEnabled(true);
-            } catch (Exception ignored) {}
-            
-            if (!success && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                Intent panelIntent = new Intent(Settings.Panel.ACTION_WIFI);
-                startActivity(panelIntent);
+        if (!wifiManager.isWifiEnabled()) wifiManager.setWifiEnabled(true);
+        if (password != null && !password.isEmpty()) saveWifiCredentials(ssid, password);
+
+        startConnectionTimeout(); // 开启 20 秒异常连接检测
+        mainHandler.postDelayed(() -> executeWifiConnection(ssid, password), 1500);
+    }
+
+    private void startConnectionTimeout() {
+        stopConnectionTimeout();
+        connectionTimeoutRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (!isWifiConnected()) {
+                    Log.w("WIFI_CONNECT", "10秒内未检测到网络连接，尝试引导至系统设置界面");
+                    openSystemWifiAndReturn();
+                }
             }
-        }
+        };
+        mainHandler.postDelayed(connectionTimeoutRunnable, 10000); // 10秒超时
+    }
 
-        // 保存成功的 Wi-Fi 配置
-        if (!(password == null || password.isEmpty())) {
-            saveWifiCredentials(ssid, password);
+    private void openSystemWifiAndReturn() {
+        try {
+            // 1. 进入系统 WiFi 设置页面
+            Intent intent = new Intent(Settings.ACTION_WIFI_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+            
+            // 2. 10 秒后自动跳回本应用
+            mainHandler.postDelayed(() -> {
+                Log.d("WIFI_CONNECT", "正在从系统设置自动跳回配网应用");
+                Intent backIntent = new Intent(this, WifiMainActivity.class);
+                backIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                startActivity(backIntent);
+            }, 10000); // 系统设置页停留 10 秒
+        } catch (Exception e) {
+            Log.e("WIFI_CONNECT", "跳转系统设置失败", e);
         }
-
-        // 3. 延迟执行连接逻辑，给硬件留出 1.5 秒的“冷启动”切换时间
-        mainHandler.postDelayed(() -> {
-            executeWifiConnection(ssid, password);
-        }, 1500);
     }
 
     private void executeWifiConnection(String ssid, String password) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // 1. 先尝试移除旧的建议，避免冲突
-            try {
-                wifiManager.removeNetworkSuggestions(new ArrayList<>());
-            } catch (Exception ignored) {}
-
-            // 2. 添加新建议
-            WifiNetworkSuggestion suggestion = new WifiNetworkSuggestion.Builder()
-                    .setSsid(ssid)
-                    .setWpa2Passphrase(password)
-                    .setIsAppInteractionRequired(false)
-                    .build();
+            try { wifiManager.removeNetworkSuggestions(new ArrayList<>()); } catch (Exception ignored) {}
+            WifiNetworkSuggestion suggestion = new WifiNetworkSuggestion.Builder().setSsid(ssid).setWpa2Passphrase(password).setIsAppInteractionRequired(false).build();
             List<WifiNetworkSuggestion> list = new ArrayList<>();
             list.add(suggestion);
-            int status = wifiManager.addNetworkSuggestions(list);
-            Log.d("WIFI_CONNECT", "添加建议状态: " + status);
+            wifiManager.addNetworkSuggestions(list);
             
-            // 3. 使用 NetworkSpecifier 请求连接
             try {
-                android.net.wifi.WifiNetworkSpecifier specifier = new android.net.wifi.WifiNetworkSpecifier.Builder()
-                        .setSsid(ssid)
-                        .setWpa2Passphrase(password)
-                        .build();
-
-                android.net.NetworkRequest request = new android.net.NetworkRequest.Builder()
-                    .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
-                    .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                    .setNetworkSpecifier(specifier)
-                    .build();
-
+                android.net.wifi.WifiNetworkSpecifier specifier = new android.net.wifi.WifiNetworkSpecifier.Builder().setSsid(ssid).setWpa2Passphrase(password).build();
+                android.net.NetworkRequest request = new android.net.NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).setNetworkSpecifier(specifier).build();
                 ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
                 if (cm != null) {
                     cm.requestNetwork(request, new ConnectivityManager.NetworkCallback() {
                         @Override
                         public void onAvailable(@NonNull android.net.Network network) {
-                            super.onAvailable(network);
                             cm.bindProcessToNetwork(network); 
-                            mainHandler.post(() -> {
-                                tvStatus.setText(R.string.wifi_status_connected);
-                                onWifiSuccess();
-                            });
-                        }
-                        
-                        @Override
-                        public void onUnavailable() {
-                            super.onUnavailable();
-                            Log.e("WIFI_CONNECT", "网络不可用");
+                            mainHandler.post(() -> onWifiSuccess());
                         }
                     });
                 }
-            } catch (Exception e) {
-                Log.e("WIFI_CONNECT", "Specifier 方式连接失败", e);
-            }
-            
+            } catch (Exception e) { Log.e("WIFI_CONNECT", "连接异常", e); }
             tvStatus.setText(getString(R.string.wifi_wait_system_dialog));
-        } else {
-            @SuppressWarnings("deprecation")
-            WifiConfiguration wifiConfig = new WifiConfiguration();
-            wifiConfig.SSID = String.format("\"%s\"", ssid);
-            wifiConfig.preSharedKey = String.format("\"%s\"", password);
-            
-            @SuppressWarnings("deprecation")
-            int netId = wifiManager.addNetwork(wifiConfig);
-            @SuppressWarnings("deprecation")
-            boolean d = wifiManager.disconnect();
-            @SuppressWarnings("deprecation")
-            boolean e = wifiManager.enableNetwork(netId, true);
-            @SuppressWarnings("deprecation")
-            boolean r = wifiManager.reconnect();
-            
-            tvStatus.setText(getString(R.string.wifi_request_connection, ssid));
         }
     }
 }

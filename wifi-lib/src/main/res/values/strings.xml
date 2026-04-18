@@ -42,5 +42,15 @@
     <string name="wifi_waiting_auto_connect">Waiting for automatic Wi-Fi connection... %d seconds</string>
     <string name="wifi_hotspot_monitoring">Monitoring hotspot status...</string>
     <string name="wifi_web_connected_msg">Configuration received. Saved Wi-Fi: %s</string>
-    <string name="accessibility_service_description">WiFi辅助连接服务，用于自动处理系统WiFi连接弹窗，确保连接过程自动化。</string>
+    
+    <string name="wifi_hotspot_active_step">Hotspot Active</string>
+    <string name="wifi_hotspot_info_manual">Manual: SSID %1$s | PWD %2$s</string>
+    <string name="wifi_step_config_title">Enter Config Page</string>
+    <string name="wifi_step_config_desc">Click \"Sign in to network\" or scan QR code below.</string>
+    <string name="wifi_set_home_label">Set as Default Launcher</string>
+    <string name="wifi_set_accessibility_label">Enable Auto-Confirm Service</string>
+    <string name="wifi_go_to_set">Go to Settings</string>
+    <string name="wifi_go_to_enable">Enable</string>
+    <string name="wifi_action_retry">Retry</string>
+    <string name="accessibility_service_description">WiFi auxiliary connection service for automatic handling of system popups.</string>
 </resources>

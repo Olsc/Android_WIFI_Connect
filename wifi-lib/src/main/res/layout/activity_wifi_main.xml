@@ -17,7 +17,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="智能配网中心"
+            android:text="@string/wifi_status_title"
             android:textColor="#1E293B"
             android:textSize="22sp"
             android:textStyle="bold"/>
@@ -25,7 +25,7 @@
             android:id="@+id/tv_status"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="正在初始化设备..."
+            android:text="@string/wifi_checking"
             android:textColor="#64748B"
             android:textSize="13sp"/>
     </LinearLayout>
@@ -81,7 +81,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="连接热点"
+                            android:text="@string/wifi_scan_to_connect"
                             android:textColor="#334155"
                             android:textSize="16sp"
                             android:textStyle="bold"/>
@@ -90,7 +90,7 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="扫码或手动连接设备热点"
+                        android:text="@string/wifi_hotspot_active"
                         android:textColor="#64748B"
                         android:textSize="12sp"
                         android:layout_marginBottom="8dp"/>
@@ -162,7 +162,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="进入配网"
+                            android:text="@string/wifi_step_config_title"
                             android:textColor="#334155"
                             android:textSize="16sp"
                             android:textStyle="bold"/>
@@ -171,7 +171,7 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="点击通知或扫码进入网页"
+                        android:text="@string/wifi_step_config_desc"
                         android:textColor="#64748B"
                         android:textSize="12sp"
                         android:layout_marginBottom="8dp"/>
@@ -225,7 +225,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="设为默认桌面"
+                    android:text="@string/wifi_set_home_label"
                     android:textColor="#475569"
                     android:textSize="12sp"/>
                 <Button
@@ -234,7 +234,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="32dp"
                     android:padding="0dp"
-                    android:text="去设置"
+                    android:text="@string/wifi_go_to_set"
                     android:textSize="12sp"
                     android:textColor="#3B82F6"/>
             </LinearLayout>
@@ -259,7 +259,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="自动确认配网"
+                    android:text="@string/wifi_set_accessibility_label"
                     android:textColor="#6D28D9"
                     android:textSize="12sp"/>
                 <Button
@@ -268,7 +268,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="32dp"
                     android:padding="0dp"
-                    android:text="去开启"
+                    android:text="@string/wifi_go_to_enable"
                     android:textSize="12sp"
                     android:textColor="#8B5CF6"/>
             </LinearLayout>
@@ -278,7 +278,7 @@
             android:id="@+id/btn_action"
             android:layout_width="match_parent"
             android:layout_height="48dp"
-            android:text="重试"
+            android:text="@string/wifi_action_retry"
             android:textAllCaps="false"
             android:textSize="14sp"
             android:textStyle="bold"

@@ -127,12 +127,12 @@ public class WifiAccessibilityService extends AccessibilityService {
 
     @Override
     public void onInterrupt() {
-        Log.d(TAG, "WifiAccessibilityService interrupted");
+        Log.d(TAG, "无障碍服务被中断");
     }
 
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
-        Log.d(TAG, "WifiAccessibilityService connected");
+        Log.d(TAG, "无障碍服务已连接并准备就绪");
     }
 }

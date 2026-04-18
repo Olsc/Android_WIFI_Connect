@@ -42,4 +42,15 @@
     <string name="wifi_waiting_auto_connect">正在等待系统自动连接 Wi-Fi... %d 秒</string>
     <string name="wifi_hotspot_monitoring">正在监控热点状态...</string>
     <string name="wifi_web_connected_msg">已收到配置。已保存 Wi-Fi：%s</string>
+
+    <string name="wifi_hotspot_active_step">热点已启用</string>
+    <string name="wifi_hotspot_info_manual">手动: 名称 %1$s | 密码 %2$s</string>
+    <string name="wifi_step_config_title">进入配网页面</string>
+    <string name="wifi_step_config_desc">点击“登录网络”通知或扫描下方二维码。</string>
+    <string name="wifi_set_home_label">设置此应用为默认桌面</string>
+    <string name="wifi_set_accessibility_label">开启自动确认服务 (推荐)</string>
+    <string name="wifi_go_to_set">去设置</string>
+    <string name="wifi_go_to_enable">去开启</string>
+    <string name="wifi_action_retry">重试</string>
+    <string name="accessibility_service_description">WiFi辅助连接服务，用于自动处理系统WiFi连接弹窗，确保连接过程自动化。</string>
 </resources>
