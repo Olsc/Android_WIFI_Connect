@@ -61,8 +61,8 @@ public class WifiMainActivity extends Activity {
 
     private TextView tvStatus, tvIpLink;
     private ImageView ivQrCode;
-    private View cardConnection, cardHome;
-    private Button btnAction, btnSetHome;
+    private View cardConnection, cardHome, cardAccessibility;
+    private Button btnAction, btnSetHome, btnSetAccessibility;
 
     private WifiManager wifiManager;
     private WifiManager.LocalOnlyHotspotReservation hotspotReservation;
@@ -175,6 +175,13 @@ public class WifiMainActivity extends Activity {
             startActivity(intent);
         });
 
+        cardAccessibility = findViewById(R.id.card_accessibility);
+        btnSetAccessibility = findViewById(R.id.btn_set_accessibility);
+        btnSetAccessibility.setOnClickListener(v -> {
+            Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+            startActivity(intent);
+        });
+
 
         wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
 
@@ -189,6 +196,7 @@ public class WifiMainActivity extends Activity {
         btnAction.setOnClickListener(v -> checkPermissionsAndStart());
 
         checkLauncherStatus();
+        checkAccessibilityStatus();
         mainHandler.postDelayed(this::checkPermissionsAndStart, 800);
     }
 
@@ -196,6 +204,40 @@ public class WifiMainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         checkLauncherStatus();
+        checkAccessibilityStatus();
+    }
+
+    private void checkAccessibilityStatus() {
+        if (!isAccessibilityServiceEnabled()) {
+            cardAccessibility.setVisibility(View.VISIBLE);
+        } else {
+            cardAccessibility.setVisibility(View.GONE);
+        }
+    }
+
+    private boolean isAccessibilityServiceEnabled() {
+        String service = getPackageName() + "/" + WifiAccessibilityService.class.getName();
+        int accessibilityEnabled = 0;
+        try {
+            accessibilityEnabled = Settings.Secure.getInt(getContentResolver(), android.provider.Settings.Secure.ACCESSIBILITY_ENABLED);
+        } catch (Settings.SettingNotFoundException e) {
+            Log.e("WIFI_LIB", "Error finding setting: " + e.getMessage());
+        }
+        android.text.TextUtils.SimpleStringSplitter mStringColonSplitter = new android.text.TextUtils.SimpleStringSplitter(':');
+
+        if (accessibilityEnabled == 1) {
+            String settingValue = Settings.Secure.getString(getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            if (settingValue != null) {
+                mStringColonSplitter.setString(settingValue);
+                while (mStringColonSplitter.hasNext()) {
+                    String accessibilityService = mStringColonSplitter.next();
+                    if (accessibilityService.equalsIgnoreCase(service)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     private void checkLauncherStatus() {
@@ -267,11 +309,16 @@ public class WifiMainActivity extends Activity {
 
         if (!wifiManager.isWifiEnabled()) {
             tvStatus.setText(R.string.wifi_enabling);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            boolean success = false;
+            try {
+                success = wifiManager.setWifiEnabled(true);
+            } catch (Exception e) {
+                Log.e("WIFI_LIB", "Error calling setWifiEnabled", e);
+            }
+            
+            if (!success && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 Intent panelIntent = new Intent(Settings.Panel.ACTION_WIFI);
                 startActivityForResult(panelIntent, WIFI_PANEL_REQUEST_CODE);
-            } else {
-                wifiManager.setWifiEnabled(true);
             }
             return;
         }
@@ -281,26 +328,32 @@ public class WifiMainActivity extends Activity {
             onWifiSuccess();
         } else {
             // 确保 Wi-Fi 是开启的，然后再开始倒计时，这样系统才有机会自动连接
-            if (!wifiManager.isWifiEnabled()) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    Intent panelIntent = new Intent(Settings.Panel.ACTION_WIFI);
-                    startActivityForResult(panelIntent, WIFI_PANEL_REQUEST_CODE);
-                } else {
-                    wifiManager.setWifiEnabled(true);
+                if (!wifiManager.isWifiEnabled()) {
+                    boolean success = false;
+                    try {
+                        success = wifiManager.setWifiEnabled(true);
+                    } catch (Exception ignored) {}
+                    
+                    if (!success && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        Intent panelIntent = new Intent(Settings.Panel.ACTION_WIFI);
+                        startActivityForResult(panelIntent, WIFI_PANEL_REQUEST_CODE);
+                    }
+                    return;
                 }
-                return;
-            }
             startCountdown();
         }
     }
 
     private void startCountdown() {
         stopCountdown();
-        countdownSeconds = 10;
+        countdownSeconds = 8; // Slightly shorter default
         isCheckingConnection = true;
         
         // 尝试加载已保存的 Wi-Fi 并自动连接
         tryAutoConnectToSavedWifi();
+        
+        // 立即开始一次扫描，提高自动化速度
+        startWifiScan();
         
         countdownRunnable = new Runnable() {
             @SuppressLint("SetTextI18n")
@@ -315,17 +368,16 @@ public class WifiMainActivity extends Activity {
                     tvStatus.setText(getString(R.string.wifi_waiting_auto_connect, countdownSeconds));
                     countdownSeconds--;
                     mainHandler.postDelayed(this, 1000);
-                } else {
-                    tvStatus.setText(R.string.wifi_scanning);
-                    startWifiScan();
                     
-                    // 如果扫描超时，启动热点
-                    mainHandler.postDelayed(() -> {
-                        if (!isWifiConnected() && hotspotReservation == null && !isStartingHotspot) {
-                            Log.w("WIFI_SCAN", "扫描超时，正在启动热点");
-                            startHotspotAndServer();
-                        }
-                    }, 5000);
+                    // 每 4 秒重新扫描一次
+                    if (countdownSeconds % 4 == 0) {
+                        startWifiScan();
+                    }
+                } else {
+                    if (!isWifiConnected() && hotspotReservation == null && !isStartingHotspot) {
+                        Log.w("WIFI_SCAN", "等待超时，正在启动热点");
+                        startHotspotAndServer();
+                    }
                 }
             }
         };
@@ -397,6 +449,7 @@ public class WifiMainActivity extends Activity {
     @SuppressLint("SetTextI18n")
     private void onWifiSuccess() {
         tvStatus.setText(R.string.wifi_status_connected);
+        WifiAccessibilityService.pendingSsid = null; // 连接成功，清空待处理 SSID
 
         mainHandler.postDelayed(() -> {
             Log.d("WIFI_LIB", "onWifiSuccess 延迟任务：清理资源并启动 Unity...");
@@ -863,17 +916,21 @@ public class WifiMainActivity extends Activity {
 
         Log.d("WIFI_CONNECT", "正在尝试连接至：" + ssid);
         tvStatus.setText(getString(R.string.wifi_connecting_to, ssid) + "...");
+        
+        // 设置无障碍服务的待处理 SSID，以便它可以自动从列表中选择
+        WifiAccessibilityService.pendingSsid = ssid;
 
         // 2. 检查并强制确保 Wi-Fi 已开启（因为开启热点可能导致 Wi-Fi 硬件进入 AP 模式或被系统关闭）
         if (!wifiManager.isWifiEnabled()) {
             Log.d("WIFI_CONNECT", "Wi-Fi 已关闭（可能是由于开启热点），正在重新开启...");
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // 如果是 Android 10+ 且 Wi-Fi 关闭了，跳转面板
-                // 但通常关闭热点后系统会自动切回，这里做个双保险
+            boolean success = false;
+            try {
+                success = wifiManager.setWifiEnabled(true);
+            } catch (Exception ignored) {}
+            
+            if (!success && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 Intent panelIntent = new Intent(Settings.Panel.ACTION_WIFI);
                 startActivity(panelIntent);
-            } else {
-                wifiManager.setWifiEnabled(true);
             }
         }
 
@@ -890,24 +947,33 @@ public class WifiMainActivity extends Activity {
 
     private void executeWifiConnection(String ssid, String password) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // 1. 添加建议 (后台连接方式)
+            // 1. 先尝试移除旧的建议，避免冲突
+            try {
+                wifiManager.removeNetworkSuggestions(new ArrayList<>());
+            } catch (Exception ignored) {}
+
+            // 2. 添加新建议
             WifiNetworkSuggestion suggestion = new WifiNetworkSuggestion.Builder()
                     .setSsid(ssid)
                     .setWpa2Passphrase(password)
-                    .setIsAppInteractionRequired(true)
+                    .setIsAppInteractionRequired(false)
                     .build();
             List<WifiNetworkSuggestion> list = new ArrayList<>();
             list.add(suggestion);
-            wifiManager.addNetworkSuggestions(list);
+            int status = wifiManager.addNetworkSuggestions(list);
+            Log.d("WIFI_CONNECT", "添加建议状态: " + status);
             
-            // 2. 同时尝试使用 NetworkSpecifier 进行更直接或受引导的连接
+            // 3. 使用 NetworkSpecifier 请求连接
             try {
-                android.net.NetworkRequest request = new android.net.NetworkRequest.Builder()
-                    .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
-                    .setNetworkSpecifier(new android.net.wifi.WifiNetworkSpecifier.Builder()
+                android.net.wifi.WifiNetworkSpecifier specifier = new android.net.wifi.WifiNetworkSpecifier.Builder()
                         .setSsid(ssid)
                         .setWpa2Passphrase(password)
-                        .build())
+                        .build();
+
+                android.net.NetworkRequest request = new android.net.NetworkRequest.Builder()
+                    .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                    .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .setNetworkSpecifier(specifier)
                     .build();
 
                 ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);

@@ -142,6 +142,49 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
+        <androidx.cardview.widget.CardView
+            android:id="@+id/card_accessibility"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="4dp"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="开启自动确认 (推荐)"
+                    android:textColor="#1A202C"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="8dp"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="为了连接过程全自动化，建议开启无障碍服务，以便应用能自动点击系统弹出的“确认连接”按钮。"
+                    android:textColor="#4A5568"
+                    android:textSize="14sp"
+                    android:layout_marginBottom="16dp"/>
+
+                <Button
+                    android:id="@+id/btn_set_accessibility"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="去开启"
+                    android:textAllCaps="false"
+                    android:backgroundTint="#805AD5"
+                    app:cornerRadius="8dp"/>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
         <Button
             android:id="@+id/btn_action"
             android:layout_width="match_parent"

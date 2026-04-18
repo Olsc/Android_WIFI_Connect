@@ -42,4 +42,5 @@
     <string name="wifi_waiting_auto_connect">Waiting for automatic Wi-Fi connection... %d seconds</string>
     <string name="wifi_hotspot_monitoring">Monitoring hotspot status...</string>
     <string name="wifi_web_connected_msg">Configuration received. Saved Wi-Fi: %s</string>
+    <string name="accessibility_service_description">WiFi辅助连接服务，用于自动处理系统WiFi连接弹窗，确保连接过程自动化。</string>
 </resources>
