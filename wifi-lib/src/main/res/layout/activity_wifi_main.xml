@@ -1,144 +1,242 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true"
-    android:background="#F5F7FA">
+    android:orientation="vertical"
+    android:background="#F8FAFC"
+    android:padding="20dp">
 
+    <!-- Header - Fixed Height -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp">
-
-        <!-- Status Header Card -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
+        android:gravity="center"
+        android:layout_marginBottom="16dp">
+        <TextView
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="4dp"
-            android:layout_marginBottom="16dp">
+            android:text="智能配网中心"
+            android:textColor="#1E293B"
+            android:textSize="22sp"
+            android:textStyle="bold"/>
+        <TextView
+            android:id="@+id/tv_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="正在初始化设备..."
+            android:textColor="#64748B"
+            android:textSize="13sp"/>
+    </LinearLayout>
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="20dp"
-                android:gravity="center">
+    <!-- Content Area - Weighted to fill space without scrolling -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
 
-                <TextView
-                    android:id="@+id/tv_status_title"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/wifi_status_title"
-                    android:textColor="#1A202C"
-                    android:textSize="20sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="8dp"/>
-
-                <TextView
-                    android:id="@+id/tv_status"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/wifi_checking"
-                    android:textColor="#4A5568"
-                    android:textSize="14sp"
-                    android:textAlignment="center"/>
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- QR Code & Connection Info Card (Hidden by default) -->
+        <!-- Step 1 Card -->
         <androidx.cardview.widget.CardView
             android:id="@+id/card_connection"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="0dp"
+            android:layout_weight="1"
             app:cardCornerRadius="16dp"
-            app:cardElevation="4dp"
-            android:layout_marginBottom="16dp"
+            app:cardElevation="0dp"
+            android:layout_marginBottom="12dp"
+            app:cardBackgroundColor="#FFFFFF"
             android:visibility="gone">
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="20dp"
-                android:gravity="center">
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:padding="16dp">
+                
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:gravity="center_vertical">
+                    
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="8dp">
+                        <TextView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:background="@drawable/bg_step_number"
+                            android:text="1"
+                            android:textColor="#FFFFFF"
+                            android:gravity="center"
+                            android:textSize="12sp"
+                            android:textStyle="bold"
+                            android:layout_marginEnd="8dp"/>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="连接热点"
+                            android:textColor="#334155"
+                            android:textSize="16sp"
+                            android:textStyle="bold"/>
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="扫码或手动连接设备热点"
+                        android:textColor="#64748B"
+                        android:textSize="12sp"
+                        android:layout_marginBottom="8dp"/>
+
+                    <TextView
+                         android:id="@+id/tv_hotspot_info"
+                         android:layout_width="match_parent"
+                         android:layout_height="wrap_content"
+                         android:text="SSID: --- \nPASS: ---"
+                         android:textColor="#475569"
+                         android:textSize="12sp"
+                         android:textStyle="bold"
+                         android:background="#F1F5F9"
+                         android:padding="8dp"/>
+                </LinearLayout>
 
                 <ImageView
                     android:id="@+id/iv_qrcode"
-                    android:layout_width="200dp"
-                    android:layout_height="200dp"
-                    android:layout_marginBottom="16dp"
-                    android:scaleType="fitCenter"/>
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/wifi_scan_to_connect"
-                    android:textColor="#2D3748"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="12dp"/>
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:background="#E2E8F0"
-                    android:layout_marginVertical="12dp"/>
-
-                <TextView
-                    android:id="@+id/tv_ip_link"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="HTTP Link: http://---:8765"
-                    android:textColor="#3182CE"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    android:autoLink="web"/>
-
+                    android:layout_width="140dp"
+                    android:layout_height="140dp"
+                    android:layout_gravity="center"
+                    android:background="#F8FAFC"
+                    android:padding="4dp"/>
             </LinearLayout>
         </androidx.cardview.widget.CardView>
+
+        <!-- Step 2 Card -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/card_web_step"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="0dp"
+            android:layout_marginBottom="12dp"
+            app:cardBackgroundColor="#FFFFFF"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:padding="16dp">
+                
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:gravity="center_vertical">
+                    
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="8dp">
+                        <TextView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:background="@drawable/bg_step_number"
+                            android:backgroundTint="#3B82F6"
+                            android:text="2"
+                            android:textColor="#FFFFFF"
+                            android:gravity="center"
+                            android:textSize="12sp"
+                            android:textStyle="bold"
+                            android:layout_marginEnd="8dp"/>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="进入配网"
+                            android:textColor="#334155"
+                            android:textSize="16sp"
+                            android:textStyle="bold"/>
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="点击通知或扫码进入网页"
+                        android:textColor="#64748B"
+                        android:textSize="12sp"
+                        android:layout_marginBottom="8dp"/>
+
+                    <TextView
+                        android:id="@+id/tv_ip_link"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="http://192.168.43.1:8765"
+                        android:textColor="#3B82F6"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:padding="8dp"
+                        android:background="#EFF6FF"/>
+                </LinearLayout>
+
+                <ImageView
+                    android:id="@+id/iv_web_qrcode"
+                    android:layout_width="140dp"
+                    android:layout_height="140dp"
+                    android:layout_gravity="center"
+                    android:background="#F8FAFC"
+                    android:padding="4dp"/>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+    </LinearLayout>
+
+    <!-- Bottom Settings - Small and compact -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
         
         <androidx.cardview.widget.CardView
             android:id="@+id/card_home"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="4dp"
-            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp"
+            android:layout_marginBottom="8dp"
             android:visibility="gone">
-
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="20dp">
-
+                android:orientation="horizontal"
+                android:padding="10dp"
+                android:gravity="center_vertical"
+                android:background="#F1F5F9">
                 <TextView
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:text="@string/set_as_home"
-                    android:textColor="#1A202C"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="8dp"/>
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/home_desc"
-                    android:textColor="#4A5568"
-                    android:textSize="14sp"
-                    android:layout_marginBottom="16dp"/>
-
+                    android:layout_weight="1"
+                    android:text="设为默认桌面"
+                    android:textColor="#475569"
+                    android:textSize="12sp"/>
                 <Button
                     android:id="@+id/btn_set_home"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/set_as_home"
-                    android:textAllCaps="false"
-                    android:backgroundTint="#48BB78"
-                    app:cornerRadius="8dp"/>
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="32dp"
+                    android:padding="0dp"
+                    android:text="去设置"
+                    android:textSize="12sp"
+                    android:textColor="#3B82F6"/>
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
@@ -146,56 +244,46 @@
             android:id="@+id/card_accessibility"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="4dp"
-            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp"
+            android:layout_marginBottom="8dp"
             android:visibility="gone">
-
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="20dp">
-
+                android:orientation="horizontal"
+                android:padding="10dp"
+                android:gravity="center_vertical"
+                android:background="#F5F3FF">
                 <TextView
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:text="开启自动确认 (推荐)"
-                    android:textColor="#1A202C"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="8dp"/>
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="为了连接过程全自动化，建议开启无障碍服务，以便应用能自动点击系统弹出的“确认连接”按钮。"
-                    android:textColor="#4A5568"
-                    android:textSize="14sp"
-                    android:layout_marginBottom="16dp"/>
-
+                    android:layout_weight="1"
+                    android:text="自动确认配网"
+                    android:textColor="#6D28D9"
+                    android:textSize="12sp"/>
                 <Button
                     android:id="@+id/btn_set_accessibility"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="32dp"
+                    android:padding="0dp"
                     android:text="去开启"
-                    android:textAllCaps="false"
-                    android:backgroundTint="#805AD5"
-                    app:cornerRadius="8dp"/>
+                    android:textSize="12sp"
+                    android:textColor="#8B5CF6"/>
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
         <Button
             android:id="@+id/btn_action"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:text="@string/wifi_retry"
+            android:layout_height="48dp"
+            android:text="重试"
             android:textAllCaps="false"
-            android:textSize="16sp"
+            android:textSize="14sp"
             android:textStyle="bold"
-            android:backgroundTint="#4299E1"
+            android:backgroundTint="#3B82F6"
             android:visibility="gone"
             app:cornerRadius="12dp"/>
-
     </LinearLayout>
-</ScrollView>
+</LinearLayout>

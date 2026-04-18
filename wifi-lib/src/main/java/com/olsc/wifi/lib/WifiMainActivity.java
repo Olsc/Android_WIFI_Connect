@@ -59,9 +59,9 @@ import android.content.SharedPreferences;
 
 public class WifiMainActivity extends Activity {
 
-    private TextView tvStatus, tvIpLink;
-    private ImageView ivQrCode;
-    private View cardConnection, cardHome, cardAccessibility;
+    private TextView tvStatus, tvIpLink, tvHotspotInfo;
+    private ImageView ivQrCode, ivWebQrCode;
+    private View cardConnection, cardHome, cardAccessibility, cardWebStep;
     private Button btnAction, btnSetHome, btnSetAccessibility;
 
     private WifiManager wifiManager;
@@ -82,6 +82,7 @@ public class WifiMainActivity extends Activity {
     private Runnable countdownRunnable;
     private Runnable hotspotMonitorRunnable;
     private static final int HOTSPOT_CHECK_INTERVAL = 5000;
+    private String lastReportedIp = "127.0.0.1";
     private static final String PREFS_NAME = "WifiConfigPrefs";
     private static final String KEY_WIFI_LIST = "saved_wifi_list";
 
@@ -164,17 +165,18 @@ public class WifiMainActivity extends Activity {
 
         tvStatus = findViewById(R.id.tv_status);
         tvIpLink = findViewById(R.id.tv_ip_link);
+        tvHotspotInfo = findViewById(R.id.tv_hotspot_info);
         ivQrCode = findViewById(R.id.iv_qrcode);
+        ivWebQrCode = findViewById(R.id.iv_web_qrcode);
         cardConnection = findViewById(R.id.card_connection);
+        cardWebStep = findViewById(R.id.card_web_step);
         btnAction = findViewById(R.id.btn_action);
         cardHome = findViewById(R.id.card_home);
         btnSetHome = findViewById(R.id.btn_set_home);
-
         btnSetHome.setOnClickListener(v -> {
             Intent intent = new Intent(Settings.ACTION_HOME_SETTINGS);
             startActivity(intent);
         });
-
         cardAccessibility = findViewById(R.id.card_accessibility);
         btnSetAccessibility = findViewById(R.id.btn_set_accessibility);
         btnSetAccessibility.setOnClickListener(v -> {
@@ -567,16 +569,28 @@ public class WifiMainActivity extends Activity {
                         final String fSsid = ssid;
                         final String fPass = password;
                         new Thread(() -> {
+                            // WiFi 连接二维码
                             String wifiQrContent = "WIFI:S:" + fSsid + ";T:WPA;P:" + fPass + ";;";
                             Bitmap qrBitmap = generateQrCode(wifiQrContent);
+                            
+                            // 网页配网二维码
+                            String ip = getHotspotIpAddress();
+                            String webUrl = "http://" + ip + ":8765/";
+                            Bitmap webQrBitmap = generateQrCode(webUrl);
+
                             mainHandler.post(() -> {
                                 if (qrBitmap != null) {
                                     ivQrCode.setImageBitmap(qrBitmap);
                                 }
+                                if (webQrBitmap != null) {
+                                    ivWebQrCode.setImageBitmap(webQrBitmap);
+                                }
                                 cardConnection.setVisibility(View.VISIBLE);
-                                tvStatus.setText(getString(R.string.wifi_hotspot_active, fSsid));
+                                cardWebStep.setVisibility(View.VISIBLE);
+                                tvStatus.setText("设备热点已开启");
+                                tvHotspotInfo.setText("手动连接 - 名称: " + fSsid + "  密码: " + fPass);
+                                tvIpLink.setText(webUrl);
                                 startHttpServer();
-
                             });
                         }).start();
 
@@ -648,13 +662,27 @@ public class WifiMainActivity extends Activity {
             @Override
             public void run() {
                 String ip = getHotspotIpAddress();
-                if (!ip.equals("127.0.0.1") && !ip.equals("192.168.43.1") || Build.VERSION.SDK_INT < 26) {
-                    tvIpLink.setText(getString(R.string.wifi_link, "http://" + ip + ":8765"));
+                // 如果检测到有效的局域网 IP 且与上次不同，则更新 UI 和二维码
+                if (!ip.equals("127.0.0.1") && !ip.equals(lastReportedIp)) {
+                    lastReportedIp = ip;
+                    String webUrl = "http://" + ip + ":8765/";
+                    Log.d("WIFI_IP", "热点 IP 已就绪: " + ip + "，正在更新二维码...");
+                    
+                    mainHandler.post(() -> {
+                        tvIpLink.setText(webUrl);
+                    });
+
+                    // 异步重新生成网页配网二维码
+                    new Thread(() -> {
+                        Bitmap webQrBitmap = generateQrCode(webUrl);
+                        mainHandler.post(() -> {
+                            if (webQrBitmap != null) {
+                                ivWebQrCode.setImageBitmap(webQrBitmap);
+                            }
+                        });
+                    }).start();
                 }
 
-
-                
-                
                 mainHandler.postDelayed(this, IP_POLL_INTERVAL);
             }
         };
@@ -736,6 +764,20 @@ public class WifiMainActivity extends Activity {
                 }
             }
 
+            // --- 强制 Portal 认证页面跳转 (安卓 / iOS 自动弹窗) ---
+            if (path.contains("generate_204") || path.contains("hotspot-detect") || 
+                path.contains("success.html") || path.contains("canonical.html") || 
+                path.contains("connecttest") || path.contains("kindle-wifi")) {
+                
+                String ip = getHotspotIpAddress();
+                String response = "HTTP/1.1 302 Found\r\nLocation: http://" + ip + ":8765/\r\n\r\n";
+                out.write(response.getBytes(StandardCharsets.UTF_8));
+                out.flush();
+                Log.d("WIFI_HTTP", "检测到连接检测请求，已重定向至配网页面: " + path);
+                return;
+            }
+            // --------------------------------------------------
+
             int contentLength = 0;
             String headerLine;
             while ((headerLine = reader.readLine()) != null && !headerLine.isEmpty()) {
@@ -744,13 +786,21 @@ public class WifiMainActivity extends Activity {
                 }
             }
             
-            String css = "body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; background-color: #f5f5f7; color: #1d1d1f; } " +
-                         ".container { max-width: 400px; margin: 0 auto; background: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); } " +
-                         "h2 { margin-top: 0; color: #000; font-size: 24px; } " +
-                         "label { font-size: 14px; font-weight: 500; color: #86868b; display: block; margin-bottom: 4px; } " +
-                         "input, select { margin-bottom: 16px; padding: 12px; font-size: 16px; width: 100%; box-sizing: border-box; border: 1px solid #d2d2d7; border-radius: 8px; background-color: #fff; } " +
-                         "button { background-color: #0071e3; color: white; border: none; cursor: pointer; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: 600; width: 100%; transition: background-color 0.2s; } " +
-                         "button:hover { background-color: #0077ed; }";
+            String css = "body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; " +
+                         "background: linear-gradient(135deg, #f6f9fc 0%, #eef2f7 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; } " +
+                         ".container { width: 90%; max-width: 420px; background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); " +
+                         "padding: 40px 32px; border-radius: 28dp; box-shadow: 0 20px 40px rgba(0,0,0,0.05); border: 1px solid rgba(255,255,255,0.7); } " +
+                         "h2 { margin: 0 0 12px 0; color: #1a1a1a; font-size: 26px; font-weight: 700; letter-spacing: -0.5px; } " +
+                         "p { color: #666; font-size: 15px; margin-bottom: 32px; line-height: 1.5; } " +
+                         "label { font-size: 13px; font-weight: 600; color: #888; display: block; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; } " +
+                         "input, select { margin-bottom: 20px; padding: 16px; font-size: 16px; width: 100%; box-sizing: border-box; " +
+                         "border: 1.5px solid #eee; border-radius: 14px; background: #fafafa; transition: all 0.2s ease; outline: none; } " +
+                         "input:focus, select:focus { border-color: #007aff; background: #fff; box-shadow: 0 0 0 4px rgba(0,122,255,0.1); } " +
+                         "button { background: #007aff; color: white; border: none; cursor: pointer; padding: 18px; border-radius: 16px; " +
+                         "font-size: 17px; font-weight: 600; width: 100%; transition: all 0.3s ease; box-shadow: 0 10px 20px rgba(0,122,255,0.2); } " +
+                         "button:hover { background: #0063cc; transform: translateY(-1px); box-shadow: 0 12px 24px rgba(0,110,230,0.25); } " +
+                         "button:active { transform: translateY(0); } " +
+                         ".footer { margin-top: 32px; text-align: center; color: #bbb; font-size: 12px; }";
 
             if (path.equals("/") || path.startsWith("/?")) {
                 List<ScanResult> results = cachedScanResults;
@@ -765,7 +815,7 @@ public class WifiMainActivity extends Activity {
                 
                 StringBuilder options = new StringBuilder();
                 if (ssids.isEmpty()) {
-                    options.append("<option value=\"\">").append(getString(R.string.wifi_web_no_networks)).append("</option>");
+                    options.append("<option value=\"\">未发现网络</option>");
                 } else {
                     for (String s : ssids) {
                         options.append("<option value=\"").append(s).append("\">").append(s).append("</option>\n");
@@ -773,19 +823,22 @@ public class WifiMainActivity extends Activity {
                 }
                 
                 String js = "<script>" +
-                            "function updateSsid(val) { document.getElementsByName('manual_ssid')[0].value = val; }" +
+                            "function updateSsid(val) { if(val) document.getElementsByName('manual_ssid')[0].value = val; }" +
                             "</script>";
 
                 String htmlBody = "<div class=\"container\">" +
-                        "<h2>" + getString(R.string.wifi_web_title) + "</h2>" +
+                        "<h2>配置网络</h2>" +
+                        "<p>请为您的设备选择一个可用的 Wi-Fi 网络并输入密码。</p>" +
                         "<form method=\"POST\" action=\"/connect\">" +
-                        "<label>" + getString(R.string.wifi_web_select_label) + "</label>" +
-                        "<select name=\"ssid\" onchange=\"updateSsid(this.value)\"><option value=\"\">" + getString(R.string.wifi_web_select_placeholder) + "</option>" + options.toString() + "</select>" +
-                        "<label>" + getString(R.string.wifi_web_manual_label) + "</label>" +
-                        "<input type=\"text\" name=\"manual_ssid\" placeholder=\"" + getString(R.string.wifi_web_ssid_placeholder) + "\">" +
-                        "<label>" + getString(R.string.wifi_web_password_label) + "</label>" +
-                        "<input type=\"password\" name=\"password\" placeholder=\"" + getString(R.string.wifi_web_password_placeholder) + "\">" +
-                        "<button type=\"submit\">" + getString(R.string.wifi_web_connect_btn) + "</button></form></div>" +
+                        "<label>选择周边网络</label>" +
+                        "<select name=\"ssid\" onchange=\"updateSsid(this.value)\"><option value=\"\">-- 请选择 --</option>" + options.toString() + "</select>" +
+                        "<label>手动输入名称 (SSID)</label>" +
+                        "<input type=\"text\" name=\"manual_ssid\" placeholder=\"Wi-Fi 名称\">" +
+                        "<label>安全密码</label>" +
+                        "<input type=\"password\" name=\"password\" placeholder=\"在此输入密码\">" +
+                        "<button type=\"submit\">开始配网</button></form>" +
+                        "<div class=\"footer\">© 2026 智能助手 · 安全加密传输</div>" +
+                        "</div>" +
                         js;
 
                 String response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n" +
