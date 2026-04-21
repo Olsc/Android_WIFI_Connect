@@ -1,7 +1,6 @@
 package com.olsc.wifi.lib;
 
 import android.Manifest;
-import com.olsc.wifi.lib.R;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -64,6 +63,8 @@ public class WifiMainActivity extends Activity {
     private View cardConnection, cardHome, cardAccessibility, cardWebStep;
     private Button btnAction, btnSetHome, btnSetAccessibility;
 
+    public static boolean isActive = false;
+
     private WifiManager wifiManager;
     private WifiManager.LocalOnlyHotspotReservation hotspotReservation;
     private ServerSocket serverSocket;
@@ -115,13 +116,15 @@ public class WifiMainActivity extends Activity {
     private void updateScanResults() {
         @SuppressLint("MissingPermission")
         List<ScanResult> results = wifiManager.getScanResults();
-        if (results != null) {
+        if (results != null && !results.isEmpty()) {
             cachedScanResults = new ArrayList<>(results);
             final String statusText = getString(R.string.wifi_found_networks, results.size());
             mainHandler.post(() -> {
                 tvStatus.setText(statusText);
-                Log.d("WIFI_SCAN", "扫描完成，找到 " + results.size() + " 个网络。");
+                Log.d("WIFI_SCAN", "扫描完成，找到 " + results.size() + " 个网络。并已更新缓存。");
             });
+        } else {
+            Log.d("WIFI_SCAN", "本次扫描结果为空，保持上一版本扫描到的 " + cachedScanResults.size() + " 个网络。");
         }
     }
 
@@ -133,6 +136,9 @@ public class WifiMainActivity extends Activity {
         } catch (Exception ignored) {}
         try {
             unregisterReceiver(networkChangeReceiver);
+        } catch (Exception ignored) {}
+        try {
+            unregisterReceiver(wifiStateReceiver);
         } catch (Exception ignored) {}
         
         if (hotspotReservation != null) {
@@ -146,6 +152,18 @@ public class WifiMainActivity extends Activity {
         stopHotspotMonitor();
         stopConnectionTimeout();
     }
+
+    // Wi-Fi 状态变化接收器
+    private final BroadcastReceiver wifiStateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            int state = intent.getIntExtra(WifiManager.EXTRA_WIFI_STATE, WifiManager.WIFI_STATE_UNKNOWN);
+            if (state == WifiManager.WIFI_STATE_ENABLED) {
+                Log.d("WIFI_LIB", "Wi-Fi 已开启，继续流程");
+                startProcess();
+            }
+        }
+    };
 
     private void stopConnectionTimeout() {
         if (connectionTimeoutRunnable != null) {
@@ -204,11 +222,30 @@ public class WifiMainActivity extends Activity {
         networkFilter.addAction(ConnectivityManager.CONNECTIVITY_ACTION);
         registerReceiver(networkChangeReceiver, networkFilter);
 
+        IntentFilter stateFilter = new IntentFilter();
+        stateFilter.addAction(WifiManager.WIFI_STATE_CHANGED_ACTION);
+        registerReceiver(wifiStateReceiver, stateFilter);
+
         btnAction.setOnClickListener(v -> checkPermissionsAndStart());
 
-        checkLauncherStatus();
         checkAccessibilityStatus();
+        
+        // 启动后台 WiFi 监控服务
+        WifiMonitorService.startService(this);
+        
         mainHandler.postDelayed(this::checkPermissionsAndStart, 800);
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        isActive = true;
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        isActive = false;
     }
 
     @Override
@@ -576,7 +613,7 @@ public class WifiMainActivity extends Activity {
                                 if (webQrBitmap != null) ivWebQrCode.setImageBitmap(webQrBitmap);
                                 cardConnection.setVisibility(View.VISIBLE);
                                 cardWebStep.setVisibility(View.VISIBLE);
-                                tvStatus.setText("设备热点已开启");
+                                tvStatus.setText(getString(R.string.wifi_hotspot_active, fSsid));
                                 tvHotspotInfo.setText("名称: " + fSsid + "\n密码: " + fPass);
                                 tvIpLink.setText(webUrl);
                                 startHttpServer();

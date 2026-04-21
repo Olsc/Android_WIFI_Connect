@@ -27,6 +27,12 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+        
+        <service
+            android:name="com.olsc.wifi.lib.WifiMonitorService"
+            android:enabled="true"
+            android:exported="false" />
+
     </application>
 
 </manifest>
